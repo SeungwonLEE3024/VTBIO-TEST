@@ -68,7 +68,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'o4-mini',
+        model: 'gpt-5-mini',
         input: [
           {
             role: 'developer',
