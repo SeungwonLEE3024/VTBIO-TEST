@@ -1,3 +1,4 @@
+
 .profile-container {
   min-height: 100svh;
   display: flex;
@@ -29,7 +30,7 @@
   font-size: 36px;
   font-weight: 700;
   letter-spacing: -1px;
-  margin: 0 0 12px;
+  margin: 0 0 24px;
   background: linear-gradient(135deg, #7c3aed, #db2777);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -39,7 +40,8 @@
 .profile-header p {
   font-size: 15px;
   color: #9ca3af;
-  line-height: 1.6;
+  line-height: 2;
+  word-break: keep-all;
 }
 
 /* Form */
