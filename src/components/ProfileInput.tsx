@@ -6,7 +6,34 @@ interface ProfileData {
   photoPreview: string | null
   height: string
   weight: string
+  skinType: string
 }
+
+interface RoutineStep {
+  step: string
+  product: string
+  reason: string
+  tips: string
+}
+
+interface ConsultReport {
+  summary: string
+  morning: RoutineStep[]
+  evening: RoutineStep[]
+  ingredients: {
+    recommended: string[]
+    avoid: string[]
+  }
+  lifestyle: string
+}
+
+const SKIN_TYPES = [
+  { value: '건성', label: '건성', desc: '당김·건조' },
+  { value: '지성', label: '지성', desc: '번들·모공' },
+  { value: '복합성', label: '복합성', desc: 'T존 지성' },
+  { value: '민감성', label: '민감성', desc: '자극·홍조' },
+  { value: '중성', label: '중성', desc: '균형·매끄러움' },
+]
 
 export default function ProfileInput() {
   const [profile, setProfile] = useState<ProfileData>({
@@ -14,8 +41,12 @@ export default function ProfileInput() {
     photoPreview: null,
     height: '',
     weight: '',
+    skinType: '',
   })
-  const [submitted, setSubmitted] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [report, setReport] = useState<ConsultReport | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
+
   const [showCamera, setShowCamera] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
@@ -34,12 +65,8 @@ export default function ProfileInput() {
   const openCamera = async (facing: 'user' | 'environment' = facingMode) => {
     setCameraError(null)
     try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop())
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing },
-      })
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop())
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } })
       streamRef.current = stream
       setFacingMode(facing)
       setShowCamera(true)
@@ -77,21 +104,12 @@ export default function ProfileInput() {
     }, 'image/jpeg', 0.92)
   }
 
-  const switchCamera = () => {
-    const next = facingMode === 'user' ? 'environment' : 'user'
-    openCamera(next)
-  }
-
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
-      setProfile((prev) => ({
-        ...prev,
-        photo: file,
-        photoPreview: reader.result as string,
-      }))
+      setProfile((prev) => ({ ...prev, photo: file, photoPreview: reader.result as string }))
     }
     reader.readAsDataURL(file)
   }
@@ -102,61 +120,154 @@ export default function ProfileInput() {
     if (!file || !file.type.startsWith('image/')) return
     const reader = new FileReader()
     reader.onload = () => {
-      setProfile((prev) => ({
-        ...prev,
-        photo: file,
-        photoPreview: reader.result as string,
-      }))
+      setProfile((prev) => ({ ...prev, photo: file, photoPreview: reader.result as string }))
     }
     reader.readAsDataURL(file)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const bmi =
+    profile.height && profile.weight
+      ? (Number(profile.weight) / Math.pow(Number(profile.height) / 100, 2)).toFixed(1)
+      : null
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!profile.photo || !profile.height || !profile.weight) return
-    setSubmitted(true)
+    if (!profile.photo || !profile.height || !profile.weight || !profile.skinType) return
+    setLoading(true)
+    setApiError(null)
+    try {
+      const res = await fetch('/api/consult', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          height: Number(profile.height),
+          weight: Number(profile.weight),
+          bmi,
+          bmiLabel: getBmiLabel(Number(bmi)),
+          skinType: profile.skinType,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json() as { error: string }
+        throw new Error(err.error ?? '서버 오류가 발생했습니다.')
+      }
+      const data: ConsultReport = await res.json()
+      setReport(data)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : '오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleReset = () => {
-    setProfile({ photo: null, photoPreview: null, height: '', weight: '' })
-    setSubmitted(false)
+    setProfile({ photo: null, photoPreview: null, height: '', weight: '', skinType: '' })
+    setReport(null)
+    setApiError(null)
   }
 
-  const bmi =
-    profile.height && profile.weight
-      ? (
-          Number(profile.weight) /
-          Math.pow(Number(profile.height) / 100, 2)
-        ).toFixed(1)
-      : null
-
-  if (submitted) {
+  // ── 보고서 화면 ──────────────────────────────────────
+  if (report) {
     return (
-      <div className="profile-result">
-        <div className="result-avatar">
-          <img src={profile.photoPreview!} alt="프로필 사진" />
+      <div className="report-container">
+        <div className="report-header">
+          <div className="report-avatar">
+            <img src={profile.photoPreview!} alt="프로필" />
+          </div>
+          <div className="report-badges">
+            <span className="badge badge-skin">{profile.skinType} 피부</span>
+            <span className="badge badge-bmi">BMI {bmi} · {getBmiLabel(Number(bmi))}</span>
+          </div>
+          <h2>맞춤 뷰티 리포트</h2>
         </div>
-        <h2>분석 준비 완료!</h2>
-        <p className="result-subtitle">입력하신 정보를 바탕으로 맞춤 뷰티 서비스를 제공할게요.</p>
-        <div className="result-stats">
-          <div className="stat-card">
-            <span className="stat-label">키</span>
-            <span className="stat-value">{profile.height}<span className="stat-unit">cm</span></span>
-          </div>
-          <div className="stat-card">
-            <span className="stat-label">몸무게</span>
-            <span className="stat-value">{profile.weight}<span className="stat-unit">kg</span></span>
-          </div>
-          <div className="stat-card">
-            <span className="stat-label">BMI</span>
-            <span className="stat-value">{bmi}</span>
+
+        <div className="report-summary">
+          <p>{report.summary}</p>
+        </div>
+
+        <div className="report-section">
+          <h3 className="routine-title">
+            <span className="routine-badge morning-badge">AM</span> 아침 루틴
+          </h3>
+          <div className="routine-steps">
+            {report.morning.map((s, i) => (
+              <RoutineCard key={i} index={i + 1} step={s} />
+            ))}
           </div>
         </div>
-        <button className="btn-primary" onClick={handleReset}>다시 입력하기</button>
+
+        <div className="report-section">
+          <h3 className="routine-title">
+            <span className="routine-badge evening-badge">PM</span> 저녁 루틴
+          </h3>
+          <div className="routine-steps">
+            {report.evening.map((s, i) => (
+              <RoutineCard key={i} index={i + 1} step={s} />
+            ))}
+          </div>
+        </div>
+
+        <div className="report-section">
+          <h3 className="section-heading">성분 가이드</h3>
+          <div className="ingredients-grid">
+            <div className="ingredients-col ingredients-good">
+              <div className="ingredients-col-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                추천 성분
+              </div>
+              <ul>
+                {report.ingredients.recommended.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="ingredients-col ingredients-bad">
+              <div className="ingredients-col-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                주의 성분
+              </div>
+              <ul>
+                {report.ingredients.avoid.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="report-section">
+          <h3 className="section-heading">생활 습관 조언</h3>
+          <div className="lifestyle-card">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+            </svg>
+            <p>{report.lifestyle}</p>
+          </div>
+        </div>
+
+        <button className="btn-primary btn-reset" onClick={handleReset}>
+          다시 분석하기
+        </button>
       </div>
     )
   }
 
+  // ── 로딩 화면 ────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-spinner" />
+        <p className="loading-text">AI가 맞춤 리포트를 작성 중입니다…</p>
+        <p className="loading-sub">잠시만 기다려주세요</p>
+      </div>
+    )
+  }
+
+  // ── 입력 폼 ──────────────────────────────────────────
   return (
     <>
       <div className="profile-container">
@@ -221,16 +332,10 @@ export default function ProfileInput() {
                 </div>
               )}
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoChange}
-              style={{ display: 'none' }}
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} />
           </div>
 
-          {/* 키 & 몸무게 */}
+          {/* 체형 정보 */}
           <div className="form-section">
             <label className="section-label">체형 정보</label>
             <div className="input-row">
@@ -280,10 +385,7 @@ export default function ProfileInput() {
               <div className="bmi-track-wrap">
                 <div className="bmi-track">
                   {bmi && (
-                    <div
-                      className="bmi-marker"
-                      style={{ left: `${getBmiPosition(Number(bmi))}%` }}
-                    >
+                    <div className="bmi-marker" style={{ left: `${getBmiPosition(Number(bmi))}%` }}>
                       <div className="bmi-marker-bubble">{bmi}</div>
                     </div>
                   )}
@@ -298,10 +400,30 @@ export default function ProfileInput() {
             </div>
           </div>
 
+          {/* 피부 타입 */}
+          <div className="form-section">
+            <label className="section-label">피부 타입</label>
+            <div className="skin-type-grid">
+              {SKIN_TYPES.map((type) => (
+                <button
+                  key={type.value}
+                  type="button"
+                  className={`skin-type-btn ${profile.skinType === type.value ? 'selected' : ''}`}
+                  onClick={() => setProfile((prev) => ({ ...prev, skinType: type.value }))}
+                >
+                  <span className="skin-type-label">{type.label}</span>
+                  <span className="skin-type-desc">{type.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {apiError && <p className="form-error">{apiError}</p>}
+
           <button
             type="submit"
             className="btn-primary btn-submit"
-            disabled={!profile.photo || !profile.height || !profile.weight}
+            disabled={!profile.photo || !profile.height || !profile.weight || !profile.skinType}
           >
             뷰티 분석 시작하기
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -323,7 +445,6 @@ export default function ProfileInput() {
                 </svg>
               </button>
             </div>
-
             {cameraError ? (
               <div className="camera-error">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -332,27 +453,15 @@ export default function ProfileInput() {
                 <p>{cameraError}</p>
               </div>
             ) : (
-              <video
-                ref={videoRef}
-                className="camera-video"
-                autoPlay
-                playsInline
-                muted
-              />
+              <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
             )}
-
             <div className="camera-bottombar">
-              <button type="button" className="camera-switch" onClick={switchCamera} title="카메라 전환">
+              <button type="button" className="camera-switch" onClick={() => openCamera(facingMode === 'user' ? 'environment' : 'user')}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
               </button>
-              <button
-                type="button"
-                className="camera-capture"
-                onClick={capturePhoto}
-                disabled={!!cameraError}
-              >
+              <button type="button" className="camera-capture" onClick={capturePhoto} disabled={!!cameraError}>
                 <span className="camera-capture-inner" />
               </button>
               <div style={{ width: 48 }} />
@@ -362,6 +471,22 @@ export default function ProfileInput() {
         </div>
       )}
     </>
+  )
+}
+
+function RoutineCard({ index, step }: { index: number; step: RoutineStep }) {
+  return (
+    <div className="routine-card">
+      <div className="routine-card-num">{index}</div>
+      <div className="routine-card-body">
+        <div className="routine-card-header">
+          <span className="routine-step-name">{step.step}</span>
+          <span className="routine-product">{step.product}</span>
+        </div>
+        <p className="routine-reason">{step.reason}</p>
+        <p className="routine-tips">💡 {step.tips}</p>
+      </div>
+    </div>
   )
 }
 
