@@ -481,19 +481,47 @@ function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }
 }
 
 function LangSelector({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const current = LANGUAGES.find((l) => l.code === lang)!
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   return (
-    <div className="lang-selector">
-      {LANGUAGES.map((l) => (
-        <button
-          key={l.code}
-          type="button"
-          className={`lang-btn ${lang === l.code ? 'active' : ''}`}
-          onClick={() => onChange(l.code)}
-        >
-          <span className="lang-flag">{l.flag}</span>
-          <span className="lang-label">{l.label}</span>
-        </button>
-      ))}
+    <div className="lang-dropdown" ref={ref}>
+      <button type="button" className="lang-dropdown-trigger" onClick={() => setOpen((v) => !v)}>
+        <span className="lang-flag">{current.flag}</span>
+        <span className="lang-label">{current.label}</span>
+        <svg className={`lang-chevron ${open ? 'open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+      {open && (
+        <div className="lang-dropdown-menu">
+          {LANGUAGES.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              className={`lang-dropdown-item ${lang === l.code ? 'active' : ''}`}
+              onClick={() => { onChange(l.code); setOpen(false) }}
+            >
+              <span className="lang-flag">{l.flag}</span>
+              <span className="lang-label">{l.label}</span>
+              {lang === l.code && (
+                <svg className="lang-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
