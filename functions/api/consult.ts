@@ -29,7 +29,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: '필수 항목이 누락되었습니다.' }, 400)
   }
 
-  const prompt = `당신은 10년 경력의 전문 뷰티 더마톨로지스트 겸 기초화장품 컨설턴트입니다.
+  const prompt = `당신은 20년 경력의 전문 뷰티 더마톨로지스트 겸 기초화장품 컨설턴트입니다.
 아래 고객 정보를 바탕으로 맞춤 기초화장품 컨설팅 보고서를 JSON 형식으로 작성해주세요.
 
 [고객 정보]
@@ -61,7 +61,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   let openaiRes: Response
   try {
-    openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    openaiRes = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${env.OPENAI_API_KEY}`,
@@ -69,10 +69,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.7,
-        max_tokens: 1500,
+        input: [
+          {
+            role: 'developer',
+            content: [{ type: 'input_text', text: prompt }],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: `키 ${height} 몸무게 ${weight} BMI ${bmi} 피부타입 ${skinType}`,
+              },
+            ],
+          },
+        ],
+        text: { format: { type: 'text' } },
+        reasoning: { effort: 'medium', summary: 'auto' },
+        store: true,
       }),
     })
   } catch {
@@ -85,15 +99,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   const data = await openaiRes.json() as {
-    choices: { message: { content: string } }[]
+    output: {
+      role?: string
+      type?: string
+      content?: { type: string; text: string }[]
+    }[]
   }
 
-  const content = data.choices?.[0]?.message?.content
+  const assistantOutput = data.output?.find((o) => o.role === 'assistant')
+  const content = assistantOutput?.content?.find((c) => c.type === 'output_text')?.text
   if (!content) {
     return json({ error: '응답을 파싱할 수 없습니다.' }, 502)
   }
 
-  return new Response(content, {
+  // reasoning 모델은 JSON을 마크다운 코드블록으로 감쌀 수 있으므로 추출
+  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const jsonText = jsonMatch ? jsonMatch[1].trim() : content.trim()
+
+  return new Response(jsonText, {
     headers: { 'Content-Type': 'application/json;charset=UTF-8' },
   })
 }
