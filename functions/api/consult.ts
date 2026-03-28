@@ -61,62 +61,37 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   let openaiRes: Response
   try {
-    openaiRes = await fetch('https://api.openai.com/v1/responses', {
+    openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-5-mini',
-        input: [
-          {
-            role: 'developer',
-            content: [{ type: 'input_text', text: prompt }],
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_text',
-                text: `키 ${height} 몸무게 ${weight} BMI ${bmi} 피부타입 ${skinType}`,
-              },
-            ],
-          },
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: prompt }
         ],
-        text: { format: { type: 'text' } },
-        reasoning: { effort: 'medium', summary: 'auto' },
-        store: true,
+        response_format: { type: "json_object" }
       }),
     })
-  } catch {
+  } catch (e) {
+    console.error(e)
     return json({ error: 'OpenAI 서버에 연결할 수 없습니다.' }, 502)
   }
 
   if (!openaiRes.ok) {
     const errText = await openaiRes.text()
-    return json({ error: 'OpenAI API 오류', detail: errText }, 502)
+    return json({ error: 'OpenAI API 오류', detail: errText }, openaiRes.status)
   }
 
-  const data = await openaiRes.json() as {
-    output: {
-      role?: string
-      type?: string
-      content?: { type: string; text: string }[]
-    }[]
-  }
-
-  const assistantOutput = data.output?.find((o) => o.role === 'assistant')
-  const content = assistantOutput?.content?.find((c) => c.type === 'output_text')?.text
+  const data = await openaiRes.json() as { choices: { message: { content: string } }[] }
+  const content = data.choices[0].message.content
   if (!content) {
     return json({ error: '응답을 파싱할 수 없습니다.' }, 502)
   }
 
-  // reasoning 모델은 JSON을 마크다운 코드블록으로 감쌀 수 있으므로 추출
-  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const jsonText = jsonMatch ? jsonMatch[1].trim() : content.trim()
-
-  return new Response(jsonText, {
+  return new Response(content, {
     headers: { 'Content-Type': 'application/json;charset=UTF-8' },
   })
 }
