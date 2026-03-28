@@ -8,6 +8,7 @@ interface ConsultRequest {
   bmi: string
   bmiLabel: string
   skinType: string
+  language: string
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -24,24 +25,26 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: '요청 형식이 올바르지 않습니다.' }, 400)
   }
 
-  const { height, weight, bmi, bmiLabel, skinType } = body
+  const { height, weight, bmi, bmiLabel, skinType, language } = body
   if (!height || !weight || !bmi || !skinType) {
-    return json({ error: '필수 항목이 누락되었습니다.' }, 400)
+    return json({ error: 'Missing required fields.' }, 400)
   }
 
-  const prompt = `당신은 20년 경력의 전문 뷰티 더마톨로지스트 겸 기초화장품 컨설턴트입니다.
-아래 고객 정보를 바탕으로 맞춤 기초화장품 컨설팅 보고서를 JSON 형식으로 작성해주세요.
+  const responseLang = language || 'English'
 
-[고객 정보]
-- 키: ${height}cm / 몸무게: ${weight}kg
+  const prompt = `You are a professional beauty dermatologist and skincare consultant with 20 years of experience.
+Based on the customer information below, write a personalized skincare consulting report in JSON format.
+
+[Customer Information]
+- Height: ${height}cm / Weight: ${weight}kg
 - BMI: ${bmi} (${bmiLabel})
-- 피부 타입: ${skinType}
+- Skin Type: ${skinType}
 
-[작성 지침]
-- 피부 타입과 BMI(체지방 수준)를 연관지어 피부 상태를 분석하세요.
-- 루틴은 아침/저녁 순서대로 현실적으로 구성하세요.
-- 한국 시장에서 구하기 쉬운 성분과 제품 유형을 추천하세요.
-- 모든 텍스트는 한국어로 작성하세요.
+[Instructions]
+- Analyze the skin condition in relation to the skin type and BMI (body fat level).
+- Build a realistic morning and evening routine in order.
+- Recommend ingredient types and product types that are easy to find.
+- ALL text in the JSON response MUST be written in: ${responseLang}
 
 아래 JSON 스키마를 정확히 따르세요:
 {
