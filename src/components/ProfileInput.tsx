@@ -2,6 +2,16 @@ import { useState, useRef, useEffect } from 'react'
 import { type Lang, type SkinTypeKey, LANGUAGES, LANG_FULL_NAMES, detectLang, translations } from '../i18n'
 import './ProfileInput.css'
 
+type Theme = 'light' | 'dark'
+
+function detectTheme(): Theme {
+  try {
+    const stored = localStorage.getItem('vtbio_theme') as Theme | null
+    if (stored === 'light' || stored === 'dark') return stored
+  } catch { /* ignore */ }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 interface ProfileData {
   photo: File | null
   photoPreview: string | null
@@ -29,6 +39,7 @@ const SKIN_TYPE_KEYS: SkinTypeKey[] = ['dry', 'oily', 'combination', 'sensitive'
 
 export default function ProfileInput() {
   const [lang, setLang] = useState<Lang>(detectLang)
+  const [theme, setTheme] = useState<Theme>(detectTheme)
   const [profile, setProfile] = useState<ProfileData>({
     photo: null, photoPreview: null, height: '', weight: '', skinType: '',
   })
@@ -50,6 +61,13 @@ export default function ProfileInput() {
   useEffect(() => {
     try { localStorage.setItem('vtbio_lang', lang) } catch { /* ignore */ }
   }, [lang])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    try { localStorage.setItem('vtbio_theme', theme) } catch { /* ignore */ }
+  }, [theme])
+
+  const toggleTheme = () => setTheme((t) => t === 'light' ? 'dark' : 'light')
 
   useEffect(() => {
     if (showCamera && videoRef.current && streamRef.current) {
@@ -157,7 +175,10 @@ export default function ProfileInput() {
     const skinLabel = profile.skinType ? tr.skinTypes[profile.skinType].label : ''
     return (
       <div className="report-container">
-        <LangSelector lang={lang} onChange={setLang} />
+        <div className="header-controls">
+          <LangSelector lang={lang} onChange={setLang} />
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
         <div className="report-header">
           <div className="report-avatar">
             <img src={profile.photoPreview!} alt="profile" />
@@ -243,7 +264,10 @@ export default function ProfileInput() {
   return (
     <>
       <div className="profile-container">
-        <LangSelector lang={lang} onChange={setLang} />
+        <div className="header-controls">
+          <LangSelector lang={lang} onChange={setLang} />
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
 
         <div className="profile-header">
           <div className="logo-badge">✨ VTBIO</div>
@@ -437,6 +461,22 @@ export default function ProfileInput() {
         </div>
       )}
     </>
+  )
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+  return (
+    <button type="button" className="theme-toggle" onClick={onToggle} aria-label="Toggle theme">
+      {theme === 'light' ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75 9.75 9.75 0 0 1 8.25 6c0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25 9.75 9.75 0 0 0 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+        </svg>
+      )}
+    </button>
   )
 }
 
