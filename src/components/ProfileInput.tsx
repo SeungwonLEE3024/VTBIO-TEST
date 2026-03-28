@@ -268,13 +268,34 @@ export default function ProfileInput() {
               </div>
             </div>
 
-            {bmi && (
-              <div className="bmi-preview">
-                <span>BMI</span>
-                <strong>{bmi}</strong>
-                <span className="bmi-label">{getBmiLabel(Number(bmi))}</span>
+            <div className="bmi-bar-section">
+              <div className="bmi-bar-header">
+                <span className="bmi-bar-title">BMI</span>
+                {bmi && (
+                  <span className="bmi-bar-value">
+                    {bmi} <em>{getBmiLabel(Number(bmi))}</em>
+                  </span>
+                )}
               </div>
-            )}
+              <div className="bmi-track-wrap">
+                <div className="bmi-track">
+                  {bmi && (
+                    <div
+                      className="bmi-marker"
+                      style={{ left: `${getBmiPosition(Number(bmi))}%` }}
+                    >
+                      <div className="bmi-marker-bubble">{bmi}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="bmi-range-labels">
+                <span>저체중</span>
+                <span>정상</span>
+                <span>과체중</span>
+                <span>비만</span>
+              </div>
+            </div>
           </div>
 
           <button
@@ -349,4 +370,9 @@ function getBmiLabel(bmi: number): string {
   if (bmi < 23) return '정상'
   if (bmi < 25) return '과체중'
   return '비만'
+}
+
+function getBmiPosition(bmi: number): number {
+  const min = 10, max = 40
+  return Math.min(Math.max((bmi - min) / (max - min) * 100, 2), 98)
 }
