@@ -347,9 +347,10 @@ export default function ProfileInput() {
                     type="number"
                     min="100"
                     max="250"
+                    step="0.01"
                     placeholder="165"
                     value={profile.height}
-                    onChange={(e) => setProfile((prev) => ({ ...prev, height: e.target.value }))}
+                    onChange={(e) => setProfile((prev) => ({ ...prev, height: truncate2(e.target.value) }))}
                     required
                   />
                   <span className="input-unit">cm</span>
@@ -363,9 +364,10 @@ export default function ProfileInput() {
                     type="number"
                     min="20"
                     max="300"
+                    step="0.01"
                     placeholder="55"
                     value={profile.weight}
-                    onChange={(e) => setProfile((prev) => ({ ...prev, weight: e.target.value }))}
+                    onChange={(e) => setProfile((prev) => ({ ...prev, weight: truncate2(e.target.value) }))}
                     required
                   />
                   <span className="input-unit">kg</span>
@@ -488,6 +490,13 @@ function RoutineCard({ index, step }: { index: number; step: RoutineStep }) {
       </div>
     </div>
   )
+}
+
+function truncate2(value: string): string {
+  if (value === '' || value === '-') return value
+  const num = parseFloat(value)
+  if (isNaN(num)) return value
+  return String(Math.floor(num * 100) / 100)
 }
 
 function getBmiLabel(bmi: number): string {
