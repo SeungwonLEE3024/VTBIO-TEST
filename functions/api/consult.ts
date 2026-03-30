@@ -8,6 +8,8 @@ interface ConsultRequest {
   bmi: string
   bmiLabel: string
   skinType: string
+  concerns: string[]
+  sensitivity: number
   language: string
 }
 
@@ -25,12 +27,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ error: '요청 형식이 올바르지 않습니다.' }, 400)
   }
 
-  const { height, weight, bmi, bmiLabel, skinType, language } = body
+  const { height, weight, bmi, bmiLabel, skinType, concerns, sensitivity, language } = body
   if (!height || !weight || !bmi || !skinType) {
     return json({ error: 'Missing required fields.' }, 400)
   }
 
   const responseLang = language || 'English'
+  const sensitivityLabel = sensitivity < 33 ? 'Low (Resilient)' : sensitivity < 66 ? 'Moderate' : 'High (Very Sensitive)'
+  const concernsText = concerns && concerns.length > 0 ? concerns.join(', ') : 'None specified'
 
   const prompt = `You are a professional beauty dermatologist and skincare consultant with 20 years of experience.
 Based on the customer information below, write a personalized skincare consulting report in JSON format.
@@ -39,27 +43,40 @@ Based on the customer information below, write a personalized skincare consultin
 - Height: ${height}cm / Weight: ${weight}kg
 - BMI: ${bmi} (${bmiLabel})
 - Skin Type: ${skinType}
+- Main Concerns: ${concernsText}
+- Skin Sensitivity: ${sensitivityLabel} (${sensitivity}/100)
 
 [Instructions]
-- Analyze the skin condition in relation to the skin type and BMI (body fat level).
+- Analyze the skin condition in relation to the skin type, concerns, sensitivity level, and BMI.
 - Build a realistic morning and evening routine in order.
-- Recommend ingredient types and product types that are easy to find.
+- Recommend 3 specific product types as "Prescribed Essentials" tailored to the user's concerns and skin type.
+- Recommend ingredient types that are easy to find.
 - ALL text in the JSON response MUST be written in: ${responseLang}
 
-아래 JSON 스키마를 정확히 따르세요:
+Return ONLY valid JSON matching this exact schema:
 {
-  "summary": "피부 상태 및 체형 연관 분석 요약 (3문장 이내)",
+  "summary": "Skin condition and body analysis summary (max 3 sentences)",
   "morning": [
-    { "step": "단계명", "product": "제품 유형", "reason": "이 제품이 필요한 이유", "tips": "사용 팁 (1문장)" }
+    { "step": "Step Name", "product": "Product Type", "reason": "Why this product is needed", "tips": "Usage tip (1 sentence)" }
   ],
   "evening": [
-    { "step": "단계명", "product": "제품 유형", "reason": "이 제품이 필요한 이유", "tips": "사용 팁 (1문장)" }
+    { "step": "Step Name", "product": "Product Type", "reason": "Why this product is needed", "tips": "Usage tip (1 sentence)" }
   ],
   "ingredients": {
-    "recommended": ["성분명: 효과 설명"],
-    "avoid": ["성분명: 피해야 하는 이유"]
+    "recommended": ["Ingredient: Effect description"],
+    "avoid": ["Ingredient: Why to avoid"]
   },
-  "lifestyle": "피부 개선을 위한 생활 습관 조언 (2문장 이내)"
+  "lifestyle": "Lifestyle advice for skin improvement (max 2 sentences)",
+  "products": [
+    {
+      "stepLabel": "Gentle Cleansing",
+      "name": "Specific Product Name",
+      "type": "Product Category",
+      "price": "$65",
+      "reason": "Why this specific product works for this user's concerns and skin type",
+      "ingredients": ["Key Ingredient 1", "Key Ingredient 2", "Key Ingredient 3"]
+    }
+  ]
 }`
 
   let openaiRes: Response
@@ -75,7 +92,7 @@ Based on the customer information below, write a personalized skincare consultin
         messages: [
           { role: 'system', content: prompt }
         ],
-        response_format: { type: "json_object" }
+        response_format: { type: 'json_object' }
       }),
     })
   } catch (e) {
