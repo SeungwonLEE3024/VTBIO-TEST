@@ -75,12 +75,13 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
   useEffect(() => {
     if (!session) { setProfileLoading(false); return }
     setProfileLoading(true)
-    supabase
-      .from('profiles')
-      .select('height, weight, photo_url')
-      .eq('id', session.user.id)
-      .single()
-      .then(({ data }) => {
+    const load = async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('height, weight, photo_url')
+          .eq('id', session.user.id)
+          .single()
         if (data) {
           setProfile(prev => ({
             ...prev,
@@ -89,8 +90,11 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
             photoPreview: data.photo_url ? `${data.photo_url}?t=${Date.now()}` : prev.photoPreview,
           }))
         }
-      })
-      .finally(() => setProfileLoading(false))
+      } finally {
+        setProfileLoading(false)
+      }
+    }
+    load()
   }, [session])
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
