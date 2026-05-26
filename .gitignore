@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Firebase Studio config (may contain secrets)
+.idx/
+
 # Environment variables (contains secrets)
 .env
 .env.local
