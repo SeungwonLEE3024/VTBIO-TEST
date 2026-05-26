@@ -1,14 +1,47 @@
+import { useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { supabase } from '../lib/supabase'
 import './Landing.css'
 
 interface LandingProps {
   session: Session | null
   onStart: () => void
-  onLogin: () => void
   onSignOut: () => void
 }
 
-export default function Landing({ session, onStart, onLogin, onSignOut }: LandingProps) {
+type AuthMode = 'login' | 'signup'
+
+export default function Landing({ session, onStart, onSignOut }: LandingProps) {
+  const [authMode, setAuthMode] = useState<AuthMode>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+
+    if (authMode === 'signup') {
+      if (password.length < 8) {
+        setError('비밀번호는 8자리 이상이어야 합니다.')
+        setLoading(false)
+        return
+      }
+      const { error } = await supabase.auth.signUp({ email, password })
+      if (error) setError(error.message)
+      else setMessage('가입 확인 이메일을 발송했습니다. 이메일을 확인해 주세요.')
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) setError(error.message)
+    }
+    setLoading(false)
+  }
+
   return (
     <div className="landing-page">
       {/* Header */}
@@ -18,31 +51,25 @@ export default function Landing({ session, onStart, onLogin, onSignOut }: Landin
             <span className="material-symbols-outlined landing-brand-icon">auto_fix_high</span>
             <span className="landing-brand-name">Atelier Beauty</span>
           </div>
-          <div className="landing-header-auth">
-            {session ? (
-              <>
-                <div className="landing-user-chip">
-                  <span className="material-symbols-outlined">person</span>
-                  <span className="landing-user-email">{session.user.email}</span>
-                </div>
-                <button className="landing-btn-ghost" onClick={onSignOut}>
-                  <span className="material-symbols-outlined">logout</span>
-                  로그아웃
-                </button>
-              </>
-            ) : (
-              <button className="landing-btn-ghost" onClick={onLogin}>
-                <span className="material-symbols-outlined">login</span>
-                로그인
+          {session && (
+            <div className="landing-header-auth">
+              <div className="landing-user-chip">
+                <span className="material-symbols-outlined">person</span>
+                <span className="landing-user-email">{session.user.email}</span>
+              </div>
+              <button className="landing-btn-ghost" onClick={onSignOut}>
+                <span className="material-symbols-outlined">logout</span>
+                로그아웃
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </header>
 
       <main className="landing-main">
-        {/* Hero */}
+        {/* Hero + Auth */}
         <section className="landing-hero">
+          {/* Left: Service Intro */}
           <div className="landing-hero-text">
             <span className="landing-overline">AI-Powered Precision</span>
             <h1 className="landing-hero-title">
@@ -51,48 +78,116 @@ export default function Landing({ session, onStart, onLogin, onSignOut }: Landin
               경험하세요
             </h1>
             <p className="landing-hero-desc">
-              AI 기반 얼굴 인식과 전문 심미 원칙으로 구동되는
-              맞춤형 뷰티 컨설팅. 당신의 고유한 특성에 맞게
-              최적화된 스킨케어 루틴을 제안합니다.
+              AI 기반 피부 분석으로 맞춤형 스킨케어 루틴과
+              제품을 추천받고, 결과 리포트를 이메일로 받아보세요.
             </p>
 
-            {session ? (
-              <div className="landing-hero-actions">
-                <div className="landing-logged-in-badge">
-                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check_circle</span>
-                  로그인됨 · {session.user.email}
-                </div>
-                <button className="landing-cta-primary" onClick={onStart}>
-                  분석 시작하기
-                  <span className="material-symbols-outlined">arrow_forward</span>
-                </button>
+            {/* Feature Highlights */}
+            <div className="landing-feature-list">
+              <div className="landing-feature-item">
+                <span className="material-symbols-outlined">add_a_photo</span>
+                <span>사진 업로드 후 AI 정밀 피부 분석</span>
               </div>
-            ) : (
-              <div className="landing-hero-actions">
-                <button className="landing-cta-primary" onClick={onStart}>
-                  분석 시작하기
-                  <span className="material-symbols-outlined">arrow_forward</span>
-                </button>
-                <button className="landing-cta-secondary" onClick={onLogin}>
-                  로그인 / 회원가입
-                </button>
+              <div className="landing-feature-item">
+                <span className="material-symbols-outlined">auto_awesome</span>
+                <span>맞춤 스킨케어 루틴 · 제품 추천</span>
               </div>
+              <div className="landing-feature-item">
+                <span className="material-symbols-outlined">mail</span>
+                <span>분석 결과 리포트 이메일 전송</span>
+              </div>
+              <div className="landing-feature-item">
+                <span className="material-symbols-outlined">spa</span>
+                <span>추천/회피 성분 가이드 제공</span>
+              </div>
+            </div>
+
+            {session && (
+              <button className="landing-cta-primary" onClick={onStart} style={{ marginTop: 32 }}>
+                분석 시작하기
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </button>
             )}
           </div>
 
-          <div className="landing-hero-visual">
-            <div className="landing-hero-img-wrap">
-              <div className="landing-hero-img-placeholder">
-                <span className="material-symbols-outlined">face_6</span>
+          {/* Right: Auth Form or Logged In Card */}
+          <div className="landing-auth-panel">
+            {session ? (
+              <div className="landing-logged-card">
+                <div className="landing-logged-avatar">
+                  <span className="material-symbols-outlined">person</span>
+                </div>
+                <p className="landing-logged-greeting">환영합니다!</p>
+                <p className="landing-logged-email">{session.user.email}</p>
+                <button className="landing-cta-primary" onClick={onStart} style={{ width: '100%', justifyContent: 'center' }}>
+                  피부 분석 시작하기
+                  <span className="material-symbols-outlined">arrow_forward</span>
+                </button>
+                <button className="landing-cta-secondary" onClick={onSignOut} style={{ width: '100%', marginTop: 8 }}>
+                  로그아웃
+                </button>
               </div>
-            </div>
-            <div className="landing-float-card">
-              <div className="landing-float-card-row">
-                <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: 18 }}>verified</span>
-                <span className="landing-float-card-label">AI 피부 분석</span>
+            ) : (
+              <div className="landing-auth-card">
+                <div className="landing-auth-tabs">
+                  <button
+                    className={`landing-auth-tab ${authMode === 'login' ? 'active' : ''}`}
+                    onClick={() => { setAuthMode('login'); setError(null); setMessage(null) }}
+                  >
+                    로그인
+                  </button>
+                  <button
+                    className={`landing-auth-tab ${authMode === 'signup' ? 'active' : ''}`}
+                    onClick={() => { setAuthMode('signup'); setError(null); setMessage(null) }}
+                  >
+                    회원가입
+                  </button>
+                </div>
+
+                <p className="landing-auth-subtitle">
+                  {authMode === 'login'
+                    ? '로그인하고 AI 피부 분석을 시작하세요.'
+                    : '가입 후 맞춤 뷰티 케어를 받아보세요.'}
+                </p>
+
+                <form onSubmit={handleAuth} className="landing-auth-form">
+                  <div className="landing-auth-field">
+                    <label>이메일</label>
+                    <input
+                      type="email"
+                      placeholder="your@email.com"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      required
+                      autoComplete="email"
+                    />
+                  </div>
+                  <div className="landing-auth-field">
+                    <label>비밀번호</label>
+                    <div className="landing-auth-pw-wrap">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder={authMode === 'signup' ? '8자리 이상 입력' : '비밀번호 입력'}
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        required
+                        autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                      />
+                      <button type="button" className="landing-pw-toggle" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                        <span className="material-symbols-outlined">{showPassword ? 'visibility_off' : 'visibility'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {error && <p className="landing-auth-error">{error}</p>}
+                  {message && <p className="landing-auth-message">{message}</p>}
+
+                  <button type="submit" className="landing-auth-submit" disabled={loading}>
+                    {loading ? <span className="landing-auth-spinner" /> : (authMode === 'login' ? '로그인' : '가입하기')}
+                  </button>
+                </form>
               </div>
-              <p className="landing-float-card-desc">"정확한 피부 진단으로 딱 맞는 제품을 추천받았어요."</p>
-            </div>
+            )}
           </div>
         </section>
 
@@ -130,26 +225,15 @@ export default function Landing({ session, onStart, onLogin, onSignOut }: Landin
         {/* Feature Cards */}
         <section className="landing-features">
           <div className="landing-feature-card landing-feature-card-dark">
+            <span className="material-symbols-outlined landing-feature-icon">mail</span>
+            <h3 className="landing-feature-title">이메일 리포트 전송</h3>
+            <p className="landing-feature-desc">분석 완료 후 상세한 스킨케어 리포트를 이메일로 받아 언제든지 다시 확인하세요.</p>
+          </div>
+          <div className="landing-feature-card landing-feature-card-light">
             <span className="material-symbols-outlined landing-feature-icon">spa</span>
             <h3 className="landing-feature-title">전문가 성분 가이드</h3>
             <p className="landing-feature-desc">피부 타입에 맞는 추천 성분과 피해야 할 성분을 명확하게 알려드립니다.</p>
           </div>
-          <div className="landing-feature-card landing-feature-card-light">
-            <span className="material-symbols-outlined landing-feature-icon">morning_routine</span>
-            <h3 className="landing-feature-title">아침 · 저녁 루틴</h3>
-            <p className="landing-feature-desc">시간대별로 최적화된 스킨케어 루틴으로 피부 건강을 유지하세요.</p>
-          </div>
-        </section>
-
-        {/* Bottom CTA */}
-        <section className="landing-bottom-cta">
-          <span className="landing-overline">지금 바로 시작하세요</span>
-          <h2 className="landing-bottom-cta-title">나만의 뷰티 블루프린트</h2>
-          <p className="landing-bottom-cta-desc">무료로 맞춤 피부 분석을 받아보세요.</p>
-          <button className="landing-cta-primary" onClick={onStart}>
-            무료 분석 시작
-            <span className="material-symbols-outlined">arrow_forward</span>
-          </button>
         </section>
       </main>
 
