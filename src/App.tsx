@@ -22,7 +22,7 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  if (session === undefined) return null
+  const resolvedSession = session ?? null
 
   if (view === 'auth') return (
     <Auth onBack={() => setView('landing')} />
@@ -30,7 +30,7 @@ export default function App() {
 
   if (view === 'assessment') return (
     <ProfileInput
-      session={session}
+      session={resolvedSession}
       onSignOut={() => { supabase.auth.signOut(); setView('landing') }}
       onNeedAuth={() => setView('auth')}
     />
@@ -38,7 +38,7 @@ export default function App() {
 
   return (
     <Landing
-      session={session}
+      session={resolvedSession}
       onStart={() => setView('assessment')}
       onLogin={() => setView('auth')}
       onSignOut={() => supabase.auth.signOut()}
