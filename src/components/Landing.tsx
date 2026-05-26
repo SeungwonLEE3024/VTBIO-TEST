@@ -6,12 +6,13 @@ import './Landing.css'
 interface LandingProps {
   session: Session | null
   onStart: () => void
+  onMyPage: () => void
   onSignOut: () => void
 }
 
 type AuthMode = 'login' | 'signup'
 
-export default function Landing({ session, onStart, onSignOut }: LandingProps) {
+export default function Landing({ session, onStart, onMyPage, onSignOut }: LandingProps) {
   const [authMode, setAuthMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -68,6 +69,10 @@ export default function Landing({ session, onStart, onSignOut }: LandingProps) {
                 <span className="material-symbols-outlined">person</span>
                 <span className="landing-user-email">{session.user.email}</span>
               </div>
+              <button className="landing-btn-ghost" onClick={onMyPage}>
+                <span className="material-symbols-outlined">manage_accounts</span>
+                마이페이지
+              </button>
               <button className="landing-btn-ghost" onClick={onSignOut}>
                 <span className="material-symbols-outlined">logout</span>
                 로그아웃
