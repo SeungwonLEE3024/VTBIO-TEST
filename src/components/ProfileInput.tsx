@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { type Lang, type SkinTypeKey, type Translations, LANGUAGES, LANG_FULL_NAMES, detectLang, translations } from '../i18n'
+import { supabase } from '../lib/supabase'
 import './ProfileInput.css'
 
 type Theme = 'light' | 'dark'
@@ -50,7 +51,9 @@ interface ConsultReport {
 
 const SKIN_TYPE_KEYS: SkinTypeKey[] = ['oily', 'dry', 'combination', 'sensitive', 'normal']
 
-export default function ProfileInput() {
+import type { Session } from '@supabase/supabase-js'
+
+export default function ProfileInput({ session, onSignOut, onNeedAuth }: { session: Session | null; onSignOut: () => void; onNeedAuth: () => void }) {
   const [lang, setLang] = useState<Lang>(detectLang)
   const [theme, setTheme] = useState<Theme>(detectTheme)
   const [appStep, setAppStep] = useState<AppStep>('basic_info')
@@ -63,9 +66,32 @@ export default function ProfileInput() {
   const [showCamera, setShowCamera] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  const [profileLoading, setProfileLoading] = useState(!!session)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Load saved profile from DB on login
+  useEffect(() => {
+    if (!session) { setProfileLoading(false); return }
+    setProfileLoading(true)
+    supabase
+      .from('profiles')
+      .select('height, weight, photo_url')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setProfile(prev => ({
+            ...prev,
+            height: data.height ? String(data.height) : prev.height,
+            weight: data.weight ? String(data.weight) : prev.weight,
+            photoPreview: data.photo_url ? `${data.photo_url}?t=${Date.now()}` : prev.photoPreview,
+          }))
+        }
+      })
+      .finally(() => setProfileLoading(false))
+  }, [session])
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
@@ -108,38 +134,66 @@ export default function ProfileInput() {
     setCameraError(null)
   }
 
+  // 이미지를 최대 800px로 리사이즈 후 WebP 압축 (품질 0.85)
+  const optimizeImage = (source: HTMLImageElement | HTMLVideoElement, w: number, h: number): Promise<File> => {
+    return new Promise(resolve => {
+      const MAX = 800
+      let dw = w, dh = h
+      if (dw > MAX || dh > MAX) {
+        if (dw > dh) { dh = Math.round(dh * MAX / dw); dw = MAX }
+        else { dw = Math.round(dw * MAX / dh); dh = MAX }
+      }
+      const offscreen = document.createElement('canvas')
+      offscreen.width = dw
+      offscreen.height = dh
+      offscreen.getContext('2d')?.drawImage(source, 0, 0, dw, dh)
+      const useWebP = offscreen.toDataURL('image/webp').startsWith('data:image/webp')
+      const mime = useWebP ? 'image/webp' : 'image/jpeg'
+      const ext = useWebP ? 'webp' : 'jpg'
+      offscreen.toBlob(blob => {
+        if (!blob) return
+        resolve(new File([blob], `photo.${ext}`, { type: mime }))
+      }, mime, 0.85)
+    })
+  }
+
+  const applyPhoto = async (source: HTMLImageElement | HTMLVideoElement, w: number, h: number) => {
+    const file = await optimizeImage(source, w, h)
+    const reader = new FileReader()
+    reader.onload = () => setProfile(prev => ({ ...prev, photo: file, photoPreview: reader.result as string }))
+    reader.readAsDataURL(file)
+  }
+
   const capturePhoto = () => {
     const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    canvas.getContext('2d')?.drawImage(video, 0, 0)
-    canvas.toBlob(blob => {
-      if (!blob) return
-      const file = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' })
-      const reader = new FileReader()
-      reader.onload = () => setProfile(prev => ({ ...prev, photo: file, photoPreview: reader.result as string }))
-      reader.readAsDataURL(file)
-      closeCamera()
-    }, 'image/jpeg', 0.92)
+    if (!video) return
+    applyPhoto(video, video.videoWidth, video.videoHeight)
+    closeCamera()
   }
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setProfile(prev => ({ ...prev, photo: file, photoPreview: reader.result as string }))
-    reader.readAsDataURL(file)
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      applyPhoto(img, img.naturalWidth, img.naturalHeight)
+      URL.revokeObjectURL(url)
+    }
+    img.src = url
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
     if (!file || !file.type.startsWith('image/')) return
-    const reader = new FileReader()
-    reader.onload = () => setProfile(prev => ({ ...prev, photo: file, photoPreview: reader.result as string }))
-    reader.readAsDataURL(file)
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      applyPhoto(img, img.naturalWidth, img.naturalHeight)
+      URL.revokeObjectURL(url)
+    }
+    img.src = url
   }
 
   const bmi = profile.height && profile.weight
@@ -155,8 +209,35 @@ export default function ProfileInput() {
     }))
   }
 
+  const saveProfileToDB = async () => {
+    if (!session) return
+    let photoUrl = profile.photoPreview
+
+    if (profile.photo) {
+      const ext = profile.photo.name.split('.').pop() ?? 'jpg'
+      const path = `${session.user.id}/avatar.${ext}`
+      const { error } = await supabase.storage
+        .from('profile-photos')
+        .upload(path, profile.photo, { upsert: true })
+      if (!error) {
+        const { data } = supabase.storage.from('profile-photos').getPublicUrl(path)
+        photoUrl = data.publicUrl
+      }
+    }
+
+    await supabase.from('profiles').upsert({
+      id: session.user.id,
+      height: Number(profile.height),
+      weight: Number(profile.weight),
+      photo_url: photoUrl,
+      updated_at: new Date().toISOString(),
+    })
+  }
+
   const handleStep1Continue = () => {
-    if (!profile.photo || !profile.height || !profile.weight) return
+    if ((!profile.photo && !profile.photoPreview) || !profile.height || !profile.weight) return
+    if (!session) { onNeedAuth(); return }
+    saveProfileToDB()
     setAppStep('skin_assessment')
     window.scrollTo({ top: 0 })
   }
@@ -183,8 +264,16 @@ export default function ProfileInput() {
         }),
       })
       if (!res.ok) {
-        const err = await res.json() as { error: string }
-        throw new Error(err.error ?? tr.serverError)
+        // More robust error handling
+        const contentType = res.headers.get('content-type')
+        let errorText = tr.serverError
+        if (contentType && contentType.includes('application/json')) {
+          const errJson = await res.json() as { error?: string, detail?: string }
+          errorText = errJson.error || errJson.detail || errorText
+        } else {
+          errorText = (await res.text()) || errorText
+        }
+        throw new Error(errorText)
       }
       const data: ConsultReport = await res.json()
       setReport(data)
@@ -223,6 +312,11 @@ export default function ProfileInput() {
           <div className="top-bar-right">
             <LangSelector lang={lang} onChange={setLang} />
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            {session && (
+              <button type="button" className="sign-out-btn" onClick={onSignOut} title="로그아웃">
+                <span className="material-symbols-outlined">logout</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -232,12 +326,24 @@ export default function ProfileInput() {
           bmi={bmi}
           tr={tr}
           onReset={handleReset}
+          userEmail={session?.user.email ?? ''}
         />
       </div>
     )
   }
 
   // ── Step 1: Basic Info ───────────────────────────────
+  if (appStep === 'basic_info' && profileLoading) {
+    return (
+      <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+          <div className="loading-step-spinner" style={{ width: 36, height: 36, borderWidth: 3 }} />
+          <p style={{ color: 'var(--text-muted)', fontSize: 14, fontFamily: 'var(--font-sans)' }}>저장된 프로필 불러오는 중...</p>
+        </div>
+      </div>
+    )
+  }
+
   if (appStep === 'basic_info') {
     return (
       <>
@@ -245,6 +351,11 @@ export default function ProfileInput() {
           <div className="header-controls">
             <LangSelector lang={lang} onChange={setLang} />
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            {session && (
+              <button type="button" className="sign-out-btn" onClick={onSignOut} title="로그아웃">
+                <span className="material-symbols-outlined">logout</span>
+              </button>
+            )}
           </div>
 
           <div className="progress-header">
@@ -377,7 +488,7 @@ export default function ProfileInput() {
               type="button"
               className="btn-primary"
               onClick={handleStep1Continue}
-              disabled={!profile.photo || !profile.height || !profile.weight}
+              disabled={(!profile.photo && !profile.photoPreview) || !profile.height || !profile.weight}
             >
               {tr.continueBtn}
               <span className="material-symbols-outlined">arrow_forward</span>
@@ -434,6 +545,9 @@ export default function ProfileInput() {
         <div className="header-controls">
           <LangSelector lang={lang} onChange={setLang} />
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          <button type="button" className="sign-out-btn" onClick={onSignOut} title="로그아웃">
+            <span className="material-symbols-outlined">logout</span>
+          </button>
         </div>
 
         <div className="progress-header">
@@ -654,14 +768,46 @@ function LoadingScreen({ tr }: { tr: Translations }) {
 
 // ── Report Page ────────────────────────────────────────
 function ReportPage({
-  report, profile, bmi, tr, onReset,
+  report, profile, bmi, tr, onReset, userEmail,
 }: {
   report: ConsultReport
   profile: ProfileData
   bmi: string | null
   tr: Translations
   onReset: () => void
+  userEmail: string
 }) {
+  const [emailInput, setEmailInput] = useState(userEmail)
+  const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [showEmailForm, setShowEmailForm] = useState(false)
+
+  const handleSendEmail = async () => {
+    setSendState('sending')
+    setSendError(null)
+    try {
+      const res = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: emailInput,
+          skinType: profile.skinType,
+          bmi,
+          height: profile.height,
+          weight: profile.weight,
+          report,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json() as { error?: string }
+        throw new Error(err.error ?? '전송 실패')
+      }
+      setSendState('sent')
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : '알 수 없는 오류')
+      setSendState('error')
+    }
+  }
   const skinTypeInfo = profile.skinType ? tr.skinTypes[profile.skinType as SkinTypeKey] : null
   const analysisDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()
   const sensitivityLabel = profile.sensitivity < 33 ? tr.sensitivityLow : profile.sensitivity < 66 ? 'Moderate' : tr.sensitivityHigh
@@ -919,6 +1065,53 @@ function ReportPage({
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
         </svg>
         <p>{report.lifestyle}</p>
+      </div>
+
+      {/* Email Report */}
+      <div className="email-report-section">
+        {!showEmailForm ? (
+          <button type="button" className="btn-email-report" onClick={() => setShowEmailForm(true)}>
+            <span className="material-symbols-outlined">mail</span>
+            리포트 이메일로 받기
+          </button>
+        ) : (
+          <div className="email-report-form">
+            <p className="email-report-label">리포트를 받을 이메일 주소</p>
+            <div className="email-report-input-row">
+              <input
+                type="email"
+                className="email-report-input"
+                value={emailInput}
+                onChange={e => setEmailInput(e.target.value)}
+                placeholder="your@email.com"
+                disabled={sendState === 'sending' || sendState === 'sent'}
+              />
+              <button
+                type="button"
+                className="email-report-send-btn"
+                onClick={handleSendEmail}
+                disabled={!emailInput || sendState === 'sending' || sendState === 'sent'}
+              >
+                {sendState === 'sending' ? (
+                  <span className="btn-spinner" />
+                ) : sendState === 'sent' ? (
+                  <><span className="material-symbols-outlined" style={{ fontSize: 18 }}>check</span> 전송됨</>
+                ) : (
+                  <><span className="material-symbols-outlined" style={{ fontSize: 18 }}>send</span> 전송</>
+                )}
+              </button>
+            </div>
+            {sendState === 'sent' && (
+              <p className="email-report-success">
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>check_circle</span>
+                {emailInput} 으로 리포트를 전송했습니다.
+              </p>
+            )}
+            {sendState === 'error' && (
+              <p className="email-report-error">{sendError}</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="btn-reset-wrap">
