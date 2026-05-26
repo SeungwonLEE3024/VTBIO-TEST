@@ -51,6 +51,7 @@ function localApiPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS ? '/VTBIO-TEST/' : '/',
   plugins: [react(), localApiPlugin()],
   css: {
     postcss: {
