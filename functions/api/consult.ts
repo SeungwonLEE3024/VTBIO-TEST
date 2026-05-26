@@ -1,6 +1,5 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types'
-import { Ai } from '@cloudflare/ai'
 
 // AI 모델 프롬프트 (수정됨: 더 자세하고 구조적인 답변 생성)
 const getAiPrompt = (
@@ -76,8 +75,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const { request, env } = context
     const body: RequestBody = await request.json()
 
-    const ai = new Ai(env.AI)
-
     const prompt = getAiPrompt(
       body.language || 'English',
       body.skinType,
@@ -89,13 +86,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       body.bmiLabel
     )
 
-    const stream = await ai.run('@cf/mistral/mistral-7b-instruct-v0.1', {
-      prompt,
-      stream: true,
+    const aiResponse = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+      messages: [
+        { role: 'system', content: 'You are a world-class AI skincare consultant. Always respond with valid JSON only, no extra text.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 2048,
     })
 
-    return new Response(stream, {
-      headers: { 'Content-Type': 'text/event-stream' },
+    const text: string = aiResponse?.response ?? ''
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error('AI did not return valid JSON')
+    const report = JSON.parse(jsonMatch[0])
+
+    return new Response(JSON.stringify(report), {
+      headers: { 'Content-Type': 'application/json' },
     })
 
   } catch (error) {

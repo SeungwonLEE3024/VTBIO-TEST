@@ -656,6 +656,52 @@
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Google Login */
+.landing-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.landing-auth-divider::before,
+.landing-auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+
+.landing-google-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fff;
+  border: 1.5px solid var(--border-light);
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.landing-google-btn:hover:not(:disabled) {
+  border-color: #4285F4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+}
+
+.landing-google-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Logged-in Card */
 .landing-logged-card {
   background: var(--bg-card);
