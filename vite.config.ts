@@ -64,23 +64,4 @@ export default defineConfig({
       plugins: [],
     },
   },
-  build: {
-    // 청크 크기 경고 임계값 (500KB)
-    chunkSizeWarningLimit: 500,
-    rollupOptions: {
-      output: {
-        // 벤더 라이브러리를 별도 청크로 분리 → 장기 캐시 활용
-        manualChunks(id) {
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-            return 'vendor-react'
-          }
-          if (id.includes('node_modules/@supabase')) {
-            return 'vendor-supabase'
-          }
-        },
-      },
-    },
-    // 소스맵 비활성화 (프로덕션 번들 크기 감소)
-    sourcemap: false,
-  },
 })
