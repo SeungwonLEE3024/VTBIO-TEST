@@ -4,3 +4,7 @@ pages_build_output_dir = "dist"
 
 [ai]
 binding = "AI"
+
+[[r2_buckets]]
+binding = "PROFILE_PHOTOS"
+bucket_name = "vtbiocfr2profilephoto"

@@ -34,3 +34,4 @@ src/resend.txt
 *.njsproj
 *.sln
 *.sw?
+.wrangler/

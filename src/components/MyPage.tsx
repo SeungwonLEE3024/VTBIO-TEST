@@ -1,14 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import './MyPage.css'
 
 type Tab = 'info' | 'password' | 'delete'
 
+type SkinTypeKey = 'oily' | 'dry' | 'combination' | 'sensitive' | 'normal'
+
+const SKIN_TYPE_LABELS: Record<SkinTypeKey, string> = {
+  oily: '지성',
+  dry: '건성',
+  combination: '복합성',
+  sensitive: '민감성',
+  normal: '중성',
+}
+
 interface ProfileData {
   height: string | null
   weight: string | null
   photo_url: string | null
+  skin_type: SkinTypeKey | null
+  concerns: string[] | null
+  sensitivity: number | null
 }
 
 export default function MyPage({ session, onBack, onSignOut }: {
@@ -19,6 +32,14 @@ export default function MyPage({ session, onBack, onSignOut }: {
   const [tab, setTab] = useState<Tab>('info')
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [profileLoading, setProfileLoading] = useState(true)
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [editData, setEditData] = useState<ProfileData>({ height: null, weight: null, photo_url: null, skin_type: null, concerns: [], sensitivity: 30 })
+  const [editPhoto, setEditPhoto] = useState<File | null>(null)
+  const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null)
+  const [saveLoading, setSaveLoading] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [resetSent, setResetSent] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
@@ -31,14 +52,88 @@ export default function MyPage({ session, onBack, onSignOut }: {
     const load = async () => {
       const { data } = await supabase
         .from('profiles')
-        .select('height, weight, photo_url')
+        .select('height, weight, photo_url, skin_type, concerns, sensitivity')
         .eq('id', session.user.id)
         .single()
-      setProfile(data)
+      setProfile(data as ProfileData | null)
       setProfileLoading(false)
     }
     load()
   }, [session])
+
+  const startEditing = () => {
+    setEditData({
+      height: profile?.height ?? null,
+      weight: profile?.weight ?? null,
+      photo_url: profile?.photo_url ?? null,
+      skin_type: profile?.skin_type ?? null,
+      concerns: profile?.concerns ?? [],
+      sensitivity: profile?.sensitivity ?? 30,
+    })
+    setEditPhoto(null)
+    setEditPhotoPreview(null)
+    setSaveError(null)
+    setIsEditing(true)
+  }
+
+  const handleEditPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setEditPhoto(file)
+    const reader = new FileReader()
+    reader.onload = () => setEditPhotoPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const toggleConcern = (concern: string) => {
+    setEditData(prev => ({
+      ...prev,
+      concerns: prev.concerns?.includes(concern)
+        ? prev.concerns.filter(c => c !== concern)
+        : [...(prev.concerns ?? []), concern],
+    }))
+  }
+
+  const handleSaveProfile = async () => {
+    setSaveLoading(true)
+    setSaveError(null)
+    try {
+      let photoUrl = editData.photo_url
+
+      if (editPhoto) {
+        const formData = new FormData()
+        formData.append('file', editPhoto)
+        const { data: { session: current } } = await supabase.auth.getSession()
+        const res = await fetch('/api/upload-photo', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${current?.access_token ?? ''}` },
+          body: formData,
+        })
+        if (res.ok) {
+          const result = await res.json() as { url?: string }
+          if (result.url) photoUrl = result.url
+        }
+      }
+
+      await supabase.from('profiles').upsert({
+        id: session.user.id,
+        height: editData.height ? Number(editData.height) : null,
+        weight: editData.weight ? Number(editData.weight) : null,
+        photo_url: photoUrl,
+        skin_type: editData.skin_type,
+        concerns: editData.concerns && editData.concerns.length > 0 ? editData.concerns : null,
+        sensitivity: editData.sensitivity,
+        updated_at: new Date().toISOString(),
+      })
+
+      setProfile({ ...editData, photo_url: photoUrl })
+      setIsEditing(false)
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.')
+    } finally {
+      setSaveLoading(false)
+    }
+  }
 
   const handlePasswordReset = async () => {
     setResetLoading(true)
@@ -65,8 +160,8 @@ export default function MyPage({ session, onBack, onSignOut }: {
       if (!res.ok) {
         let errorMsg = '탈퇴 처리 중 오류가 발생했습니다.'
         try {
-          const err = await res.json() as { error?: string }
-          errorMsg = err.error ?? errorMsg
+          const err = await res.json() as { error?: string; step?: string; detail?: string }
+          errorMsg = `[${err.step ?? '?'}] ${err.error ?? errorMsg}${err.detail ? ` (${err.detail})` : ''}`
         } catch { /* 빈 응답 무시 */ }
         throw new Error(errorMsg)
       }
@@ -83,6 +178,10 @@ export default function MyPage({ session, onBack, onSignOut }: {
     year: 'numeric', month: 'long', day: 'numeric',
   })
 
+  const CONCERN_OPTIONS = ['여드름', '주름', '미백', '모공', '건조함', '홍조', '색소침착', '탄력']
+
+  const currentPhotoUrl = editPhotoPreview ?? (isEditing ? editData.photo_url : profile?.photo_url)
+
   return (
     <div className="mypage">
       <header className="mypage-header">
@@ -93,16 +192,26 @@ export default function MyPage({ session, onBack, onSignOut }: {
           <span className="material-symbols-outlined">auto_fix_high</span>
           <span>Atelier Beauty</span>
         </div>
-        <div style={{ width: 40 }} />
+        <button className="mypage-back-btn" onClick={onSignOut} title="로그아웃">
+          <span className="material-symbols-outlined">logout</span>
+        </button>
       </header>
 
       <main className="mypage-main">
         <div className="mypage-profile-top">
-          <div className="mypage-avatar">
-            {profile?.photo_url
-              ? <img src={profile.photo_url} alt="profile" />
+          <div className="mypage-avatar" style={{ position: 'relative' }}>
+            {currentPhotoUrl
+              ? <img src={currentPhotoUrl} alt="profile" />
               : <span className="material-symbols-outlined">person</span>}
+            {isEditing && (
+              <button className="mypage-avatar-edit-btn" onClick={() => fileInputRef.current?.click()}>
+                <span className="material-symbols-outlined">photo_camera</span>
+              </button>
+            )}
           </div>
+          {isEditing && (
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleEditPhotoChange} />
+          )}
           <p className="mypage-user-email">{session.user.email}</p>
           <p className="mypage-user-joined">가입일 {joinedAt}</p>
           {isGoogleUser && (
@@ -119,13 +228,13 @@ export default function MyPage({ session, onBack, onSignOut }: {
         </div>
 
         <div className="mypage-tabs">
-          <button className={`mypage-tab ${tab === 'info' ? 'active' : ''}`} onClick={() => setTab('info')}>
+          <button className={`mypage-tab ${tab === 'info' ? 'active' : ''}`} onClick={() => { setTab('info'); setIsEditing(false) }}>
             <span className="material-symbols-outlined">person</span>내 정보
           </button>
-          <button className={`mypage-tab ${tab === 'password' ? 'active' : ''}`} onClick={() => setTab('password')}>
+          <button className={`mypage-tab ${tab === 'password' ? 'active' : ''}`} onClick={() => { setTab('password'); setIsEditing(false) }}>
             <span className="material-symbols-outlined">lock</span>비밀번호
           </button>
-          <button className={`mypage-tab ${tab === 'delete' ? 'active' : ''}`} onClick={() => setTab('delete')}>
+          <button className={`mypage-tab ${tab === 'delete' ? 'active' : ''}`} onClick={() => { setTab('delete'); setIsEditing(false) }}>
             <span className="material-symbols-outlined">delete</span>회원 탈퇴
           </button>
         </div>
@@ -135,37 +244,126 @@ export default function MyPage({ session, onBack, onSignOut }: {
           <div className="mypage-section">
             {profileLoading ? (
               <div className="mypage-loading"><span className="mypage-spinner" /></div>
-            ) : (
-              <div className="mypage-info-grid">
-                <div className="mypage-info-card">
-                  <span className="material-symbols-outlined mypage-info-icon">mail</span>
-                  <div>
-                    <p className="mypage-info-label">이메일</p>
-                    <p className="mypage-info-value">{session.user.email}</p>
+            ) : isEditing ? (
+              /* 편집 모드 */
+              <div className="mypage-edit-form">
+                <div className="mypage-edit-group">
+                  <label className="mypage-edit-label">키 (cm)</label>
+                  <input className="mypage-edit-input" type="number" placeholder="165" value={editData.height ?? ''} onChange={e => setEditData(p => ({ ...p, height: e.target.value }))} />
+                </div>
+                <div className="mypage-edit-group">
+                  <label className="mypage-edit-label">몸무게 (kg)</label>
+                  <input className="mypage-edit-input" type="number" placeholder="55" value={editData.weight ?? ''} onChange={e => setEditData(p => ({ ...p, weight: e.target.value }))} />
+                </div>
+                <div className="mypage-edit-group">
+                  <label className="mypage-edit-label">피부 타입</label>
+                  <div className="mypage-skin-type-grid">
+                    {(Object.keys(SKIN_TYPE_LABELS) as SkinTypeKey[]).map(key => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`mypage-skin-btn ${editData.skin_type === key ? 'active' : ''}`}
+                        onClick={() => setEditData(p => ({ ...p, skin_type: key }))}
+                      >
+                        {SKIN_TYPE_LABELS[key]}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className="mypage-info-card">
-                  <span className="material-symbols-outlined mypage-info-icon">height</span>
-                  <div>
-                    <p className="mypage-info-label">키</p>
-                    <p className="mypage-info-value">{profile?.height ? `${profile.height} cm` : '미입력'}</p>
+                <div className="mypage-edit-group">
+                  <label className="mypage-edit-label">피부 고민</label>
+                  <div className="mypage-concern-pills">
+                    {CONCERN_OPTIONS.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`mypage-concern-pill ${editData.concerns?.includes(c) ? 'active' : ''}`}
+                        onClick={() => toggleConcern(c)}
+                      >
+                        {c}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className="mypage-info-card">
-                  <span className="material-symbols-outlined mypage-info-icon">monitor_weight</span>
-                  <div>
-                    <p className="mypage-info-label">몸무게</p>
-                    <p className="mypage-info-value">{profile?.weight ? `${profile.weight} kg` : '미입력'}</p>
+                <div className="mypage-edit-group">
+                  <label className="mypage-edit-label">민감도 <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{editData.sensitivity ?? 30}</span></label>
+                  <input
+                    type="range" min={0} max={100}
+                    value={editData.sensitivity ?? 30}
+                    onChange={e => setEditData(p => ({ ...p, sensitivity: Number(e.target.value) }))}
+                    className="mypage-sensitivity-slider"
+                  />
+                  <div className="mypage-slider-labels">
+                    <span>낮음</span><span>높음</span>
                   </div>
                 </div>
-                <div className="mypage-info-card">
-                  <span className="material-symbols-outlined mypage-info-icon">login</span>
-                  <div>
-                    <p className="mypage-info-label">로그인 방법</p>
-                    <p className="mypage-info-value">{isGoogleUser ? 'Google' : '이메일/비밀번호'}</p>
-                  </div>
+                {saveError && <p className="mypage-error">{saveError}</p>}
+                <div className="mypage-edit-actions">
+                  <button className="mypage-btn-ghost-cancel" onClick={() => setIsEditing(false)}>취소</button>
+                  <button className="mypage-btn-primary" onClick={handleSaveProfile} disabled={saveLoading}>
+                    {saveLoading ? <span className="mypage-spinner" /> : '저장'}
+                  </button>
                 </div>
               </div>
+            ) : (
+              /* 보기 모드 */
+              <>
+                <div className="mypage-info-grid">
+                  <div className="mypage-info-card">
+                    <span className="material-symbols-outlined mypage-info-icon">mail</span>
+                    <div>
+                      <p className="mypage-info-label">이메일</p>
+                      <p className="mypage-info-value">{session.user.email}</p>
+                    </div>
+                  </div>
+                  <div className="mypage-info-card">
+                    <span className="material-symbols-outlined mypage-info-icon">height</span>
+                    <div>
+                      <p className="mypage-info-label">키</p>
+                      <p className="mypage-info-value">{profile?.height ? `${profile.height} cm` : '미입력'}</p>
+                    </div>
+                  </div>
+                  <div className="mypage-info-card">
+                    <span className="material-symbols-outlined mypage-info-icon">monitor_weight</span>
+                    <div>
+                      <p className="mypage-info-label">몸무게</p>
+                      <p className="mypage-info-value">{profile?.weight ? `${profile.weight} kg` : '미입력'}</p>
+                    </div>
+                  </div>
+                  <div className="mypage-info-card">
+                    <span className="material-symbols-outlined mypage-info-icon">face</span>
+                    <div>
+                      <p className="mypage-info-label">피부 타입</p>
+                      <p className="mypage-info-value">{profile?.skin_type ? SKIN_TYPE_LABELS[profile.skin_type] : '미입력'}</p>
+                    </div>
+                  </div>
+                  <div className="mypage-info-card">
+                    <span className="material-symbols-outlined mypage-info-icon">psychology</span>
+                    <div>
+                      <p className="mypage-info-label">피부 고민</p>
+                      <p className="mypage-info-value">{profile?.concerns && profile.concerns.length > 0 ? profile.concerns.join(', ') : '미입력'}</p>
+                    </div>
+                  </div>
+                  <div className="mypage-info-card">
+                    <span className="material-symbols-outlined mypage-info-icon">thermometer</span>
+                    <div>
+                      <p className="mypage-info-label">민감도</p>
+                      <p className="mypage-info-value">{profile?.sensitivity != null ? `${profile.sensitivity} / 100` : '미입력'}</p>
+                    </div>
+                  </div>
+                  <div className="mypage-info-card">
+                    <span className="material-symbols-outlined mypage-info-icon">login</span>
+                    <div>
+                      <p className="mypage-info-label">로그인 방법</p>
+                      <p className="mypage-info-value">{isGoogleUser ? 'Google' : '이메일/비밀번호'}</p>
+                    </div>
+                  </div>
+                </div>
+                <button className="mypage-btn-edit" onClick={startEditing} style={{ marginTop: 20 }}>
+                  <span className="material-symbols-outlined">edit</span>
+                  정보 수정
+                </button>
+              </>
             )}
           </div>
         )}

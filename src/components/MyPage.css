@@ -446,8 +446,167 @@
 .mypage-btn-danger:hover:not(:disabled) { background: #b91c1c; }
 .mypage-btn-danger:disabled { background: #fca5a5; cursor: not-allowed; }
 
+/* Edit button */
+.mypage-btn-edit {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-light);
+  border-radius: 12px;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.mypage-btn-edit:hover { background: var(--bg-card-low); }
+.mypage-btn-edit .material-symbols-outlined { font-size: 18px; }
+
+/* Edit form */
+.mypage-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mypage-edit-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mypage-edit-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.mypage-edit-input {
+  padding: 12px 14px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  transition: border-color 0.15s;
+}
+.mypage-edit-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* Skin type grid */
+.mypage-skin-type-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.mypage-skin-btn {
+  padding: 10px 4px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-card);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mypage-skin-btn.active {
+  background: var(--luxury-gradient);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* Concern pills */
+.mypage-concern-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mypage-concern-pill {
+  padding: 7px 14px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 9999px;
+  background: var(--bg-card);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mypage-concern-pill.active {
+  background: var(--luxury-gradient);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* Sensitivity slider */
+.mypage-sensitivity-slider {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.mypage-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Edit actions */
+.mypage-edit-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.mypage-btn-ghost-cancel {
+  flex: 0 0 auto;
+  padding: 13px 20px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-card);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.mypage-btn-ghost-cancel:hover { background: var(--bg-card-low); }
+
+/* Avatar edit button */
+.mypage-avatar-edit-btn {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+}
+.mypage-avatar-edit-btn .material-symbols-outlined { font-size: 13px; }
+
 @media (max-width: 480px) {
-  .mypage-tab span.material-symbols-outlined {
-    display: none;
-  }
+  .mypage-tab span.material-symbols-outlined { display: none; }
+  .mypage-skin-type-grid { grid-template-columns: repeat(3, 1fr); }
 }

@@ -53,7 +53,7 @@ const SKIN_TYPE_KEYS: SkinTypeKey[] = ['oily', 'dry', 'combination', 'sensitive'
 
 import type { Session } from '@supabase/supabase-js'
 
-export default function ProfileInput({ session, onSignOut, onNeedAuth }: { session: Session | null; onSignOut: () => void; onNeedAuth: () => void }) {
+export default function ProfileInput({ session, onSignOut, onNeedAuth, onGoHome }: { session: Session | null; onSignOut: () => void; onNeedAuth: () => void; onGoHome?: () => void }) {
   const [lang, setLang] = useState<Lang>(detectLang)
   const [theme, setTheme] = useState<Theme>(detectTheme)
   const [appStep, setAppStep] = useState<AppStep>('basic_info')
@@ -79,7 +79,7 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
       try {
         const { data } = await supabase
           .from('profiles')
-          .select('height, weight, photo_url')
+          .select('height, weight, photo_url, skin_type, concerns, sensitivity')
           .eq('id', session.user.id)
           .single()
         if (data) {
@@ -88,6 +88,9 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
             height: data.height ? String(data.height) : prev.height,
             weight: data.weight ? String(data.weight) : prev.weight,
             photoPreview: data.photo_url ? `${data.photo_url}?t=${Date.now()}` : prev.photoPreview,
+            skinType: (data.skin_type as SkinTypeKey) ?? prev.skinType,
+            concerns: (data.concerns as string[]) ?? prev.concerns,
+            sensitivity: data.sensitivity ?? prev.sensitivity,
           }))
         }
       } finally {
@@ -218,15 +221,20 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
     let photoUrl = profile.photoPreview
 
     if (profile.photo) {
-      const ext = profile.photo.name.split('.').pop() ?? 'jpg'
-      const path = `${session.user.id}/avatar.${ext}`
-      const { error } = await supabase.storage
-        .from('profile-photos')
-        .upload(path, profile.photo, { upsert: true })
-      if (!error) {
-        const { data } = supabase.storage.from('profile-photos').getPublicUrl(path)
-        photoUrl = data.publicUrl
-      }
+      try {
+        const formData = new FormData()
+        formData.append('file', profile.photo)
+        const { data: { session: current } } = await supabase.auth.getSession()
+        const res = await fetch('/api/upload-photo', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${current?.access_token ?? ''}` },
+          body: formData,
+        })
+        if (res.ok) {
+          const result = await res.json() as { url?: string }
+          if (result.url) photoUrl = result.url
+        }
+      } catch { /* 업로드 실패 시 기존 URL 유지 */ }
     }
 
     await supabase.from('profiles').upsert({
@@ -234,6 +242,9 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
       height: Number(profile.height),
       weight: Number(profile.weight),
       photo_url: photoUrl,
+      skin_type: profile.skinType || null,
+      concerns: profile.concerns.length > 0 ? profile.concerns : null,
+      sensitivity: profile.sensitivity,
       updated_at: new Date().toISOString(),
     })
   }
@@ -251,6 +262,7 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
     setAppStep('loading')
     setApiError(null)
     window.scrollTo({ top: 0 })
+    saveProfileToDB()
 
     try {
       const res = await fetch('/api/consult', {
@@ -331,6 +343,7 @@ export default function ProfileInput({ session, onSignOut, onNeedAuth }: { sessi
           tr={tr}
           onReset={handleReset}
           userEmail={session?.user.email ?? ''}
+          onGoHome={onGoHome}
         />
       </div>
     )
@@ -772,7 +785,7 @@ function LoadingScreen({ tr }: { tr: Translations }) {
 
 // ── Report Page ────────────────────────────────────────
 function ReportPage({
-  report, profile, bmi, tr, onReset, userEmail,
+  report, profile, bmi, tr, onReset, userEmail, onGoHome,
 }: {
   report: ConsultReport
   profile: ProfileData
@@ -780,6 +793,7 @@ function ReportPage({
   tr: Translations
   onReset: () => void
   userEmail: string
+  onGoHome?: () => void
 }) {
   const [emailInput, setEmailInput] = useState(userEmail)
   const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
@@ -1123,6 +1137,12 @@ function ReportPage({
           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>refresh</span>
           {tr.resetBtn}
         </button>
+        {onGoHome && (
+          <button type="button" className="btn-reset" onClick={onGoHome} style={{ marginTop: 8 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>home</span>
+            메인으로 돌아가기
+          </button>
+        )}
       </div>
     </div>
   )
