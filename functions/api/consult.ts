@@ -18,7 +18,7 @@ The user's language is ${lang}. All text in the JSON response must be in ${lang}
 
 User Profile:
 - Skin Type: ${skinType}
-- Key Concerns: ${concerns.join(', ') || 'Not specified'}
+- Key Concerns: ${(concerns || []).join(', ') || 'Not specified'}
 - Sensitivity Score: ${sensitivity}/100
 - Body Metrics: Height ${height}cm, Weight ${weight}kg, BMI ${bmi} (${bmiLabel})
 
