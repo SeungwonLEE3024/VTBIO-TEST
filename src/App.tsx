@@ -1,9 +1,10 @@
-import { useState, useEffect, Component, type ReactNode } from 'react'
+import { useState, useEffect, Component, lazy, Suspense, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import Landing from './components/Landing'
-import ProfileInput from './components/ProfileInput'
-import MyPage from './components/MyPage'
+
+const ProfileInput = lazy(() => import('./components/ProfileInput'))
+const MyPage = lazy(() => import('./components/MyPage'))
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null }
@@ -40,22 +41,26 @@ export default function App() {
 
   if (view === 'mypage' && resolvedSession) return (
     <ErrorBoundary>
-      <MyPage
-        session={resolvedSession}
-        onBack={() => setView('landing')}
-        onSignOut={() => { supabase.auth.signOut(); setView('landing') }}
-      />
+      <Suspense fallback={null}>
+        <MyPage
+          session={resolvedSession}
+          onBack={() => setView('landing')}
+          onSignOut={() => { supabase.auth.signOut(); setView('landing') }}
+        />
+      </Suspense>
     </ErrorBoundary>
   )
 
   if (view === 'assessment') return (
     <ErrorBoundary>
-      <ProfileInput
-        session={resolvedSession}
-        onSignOut={() => { supabase.auth.signOut(); setView('landing') }}
-        onNeedAuth={() => setView('landing')}
-        onGoHome={() => setView('landing')}
-      />
+      <Suspense fallback={null}>
+        <ProfileInput
+          session={resolvedSession}
+          onSignOut={() => { supabase.auth.signOut(); setView('landing') }}
+          onNeedAuth={() => setView('landing')}
+          onGoHome={() => setView('landing')}
+        />
+      </Suspense>
     </ErrorBoundary>
   )
 
