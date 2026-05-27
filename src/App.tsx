@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import Landing from './components/Landing'
 
-// ProfileInput/MyPage: 초기 번들에서 제외, 필요 시 지연 로드
+// 초기 로딩에 불필요한 컴포넌트는 lazy load → 초기 번들 크기 감소
 const ProfileInput = lazy(() => import('./components/ProfileInput'))
 const MyPage = lazy(() => import('./components/MyPage'))
 
