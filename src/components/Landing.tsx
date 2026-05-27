@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
 import './Landing.css'
+
+// Supabase를 이벤트 핸들러에서만 지연 로드 → 초기 번들에서 제외
+const getSupabase = () => import('../lib/supabase').then(m => m.supabase)
 
 const WMO_GREETINGS: Record<number, string> = {
   0: '오늘은 하늘이 맑아요!',
@@ -105,6 +107,7 @@ export default function Landing({ session, onStart, onMyPage, onSignOut }: Landi
   const handleGoogleLogin = async () => {
     setLoading(true)
     setError(null)
+    const supabase = await getSupabase()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin },
@@ -125,10 +128,12 @@ export default function Landing({ session, onStart, onMyPage, onSignOut }: Landi
         setLoading(false)
         return
       }
+      const supabase = await getSupabase()
       const { error } = await supabase.auth.signUp({ email, password })
       if (error) setError(error.message)
       else setMessage('가입 확인 이메일을 발송했습니다. 이메일을 확인해 주세요.')
     } else {
+      const supabase = await getSupabase()
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) setError(error.message)
     }

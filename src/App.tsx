@@ -1,11 +1,14 @@
-import { useState, useEffect, Component, lazy, Suspense, type ReactNode } from 'react'
-import type { Session } from '@supabase/supabase-js'
-import { supabase } from './lib/supabase'
+import { useState, useEffect, useRef, Component, lazy, Suspense, type ReactNode } from 'react'
+import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import Landing from './components/Landing'
 
-// 초기 로딩에 불필요한 컴포넌트는 lazy load → 초기 번들 크기 감소
+// ProfileInput/MyPage: 초기 번들에서 제외, 필요 시 지연 로드
 const ProfileInput = lazy(() => import('./components/ProfileInput'))
 const MyPage = lazy(() => import('./components/MyPage'))
+
+// Supabase: 초기 렌더링과 분리하여 병렬 로드 시작
+//   → Landing이 즉시 렌더링되고, auth 상태는 비동기로 업데이트
+const supabasePromise = import('./lib/supabase').then(m => m.supabase)
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null }
@@ -26,17 +29,31 @@ type View = 'landing' | 'assessment' | 'mypage'
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [view, setView] = useState<View>('landing')
+  const sbRef = useRef<SupabaseClient | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    let cleanup: (() => void) | null = null
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      if (!session) setView('landing')
+    supabasePromise.then(supabase => {
+      sbRef.current = supabase
+
+      supabase.auth.getSession().then(({ data }) => setSession(data.session))
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session)
+        if (!session) setView('landing')
+      })
+
+      cleanup = () => subscription.unsubscribe()
     })
 
-    return () => subscription.unsubscribe()
+    return () => { cleanup?.() }
   }, [])
+
+  const handleSignOut = () => {
+    sbRef.current?.auth.signOut()
+    setView('landing')
+  }
 
   const resolvedSession = session ?? null
 
@@ -46,7 +63,7 @@ export default function App() {
         <MyPage
           session={resolvedSession}
           onBack={() => setView('landing')}
-          onSignOut={() => { supabase.auth.signOut(); setView('landing') }}
+          onSignOut={handleSignOut}
         />
       </Suspense>
     </ErrorBoundary>
@@ -57,7 +74,7 @@ export default function App() {
       <Suspense fallback={null}>
         <ProfileInput
           session={resolvedSession}
-          onSignOut={() => { supabase.auth.signOut(); setView('landing') }}
+          onSignOut={handleSignOut}
           onNeedAuth={() => setView('landing')}
           onGoHome={() => setView('landing')}
         />
@@ -71,7 +88,7 @@ export default function App() {
         session={resolvedSession}
         onStart={() => setView('assessment')}
         onMyPage={() => setView('mypage')}
-        onSignOut={() => supabase.auth.signOut()}
+        onSignOut={handleSignOut}
       />
     </ErrorBoundary>
   )
