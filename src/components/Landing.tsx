@@ -1,7 +1,82 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import './Landing.css'
+
+const WMO_GREETINGS: Record<number, string> = {
+  0: '오늘은 하늘이 맑아요!',
+  1: '대체로 맑은 하늘이에요!',
+  2: '구름이 조금 끼었어요.',
+  3: '흐린 날씨네요.',
+  45: '안개가 자욱해요.',
+  48: '안개가 자욱해요.',
+  51: '가랑비가 내리고 있어요.',
+  53: '가랑비가 내리고 있어요.',
+  55: '가랑비가 내리고 있어요.',
+  61: '비가 내리고 있어요.',
+  63: '비가 제법 내리고 있어요.',
+  65: '비가 많이 내리고 있어요.',
+  71: '눈이 내리고 있어요!',
+  73: '눈이 제법 내리고 있어요!',
+  75: '눈이 많이 내리고 있어요!',
+  80: '소나기가 내리고 있어요.',
+  81: '소나기가 내리고 있어요.',
+  82: '강한 소나기가 내리고 있어요.',
+  95: '천둥번개가 치고 있어요!',
+  96: '우박을 동반한 폭풍이에요!',
+  99: '우박을 동반한 폭풍이에요!',
+}
+
+async function fetchWeatherGreeting(): Promise<string> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      // 위치 API 없으면 IP 기반으로 대략적 위치 사용 (서울 기본값)
+      fetchWeatherByCoords(37.5665, 126.9780).then(resolve)
+      return
+    }
+    const timer = setTimeout(() => resolve('환영합니다!'), 8000)
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        clearTimeout(timer)
+        const result = await fetchWeatherByCoords(coords.latitude, coords.longitude)
+        resolve(result)
+      },
+      async () => {
+        clearTimeout(timer)
+        // 위치 거부 시 IP 기반 위치 시도
+        try {
+          const ipRes = await fetch('https://ipapi.co/json/')
+          const ipData = await ipRes.json() as { latitude?: number; longitude?: number }
+          if (ipData.latitude && ipData.longitude) {
+            const result = await fetchWeatherByCoords(ipData.latitude, ipData.longitude)
+            resolve(result)
+          } else {
+            resolve('환영합니다!')
+          }
+        } catch {
+          resolve('환영합니다!')
+        }
+      },
+      { timeout: 6000 }
+    )
+  })
+}
+
+async function fetchWeatherByCoords(lat: number, lon: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,temperature_2m&timezone=auto`
+    )
+    const data = await res.json() as { current?: { weather_code?: number; temperature_2m?: number } }
+    const code = data.current?.weather_code ?? 0
+    const temp = data.current?.temperature_2m
+    const weather = WMO_GREETINGS[code] ?? '오늘도 좋은 하루예요!'
+    const tempStr = temp != null ? ` (${Math.round(temp)}°C)` : ''
+    return `${weather}${tempStr}`
+  } catch {
+    return '환영합니다!'
+  }
+}
 
 interface LandingProps {
   session: Session | null
@@ -18,6 +93,12 @@ export default function Landing({ session, onStart, onMyPage, onSignOut }: Landi
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [weatherGreeting, setWeatherGreeting] = useState('환영합니다!')
+
+  useEffect(() => {
+    if (!session) return
+    fetchWeatherGreeting().then(setWeatherGreeting)
+  }, [session?.user.id])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -133,7 +214,7 @@ export default function Landing({ session, onStart, onMyPage, onSignOut }: Landi
                 <div className="landing-logged-avatar">
                   <span className="material-symbols-outlined">person</span>
                 </div>
-                <p className="landing-logged-greeting">환영합니다!</p>
+                <p className="landing-logged-greeting" style={{ whiteSpace: 'pre-line' }}>{weatherGreeting}</p>
                 <p className="landing-logged-email">{session.user.email}</p>
                 <button className="landing-cta-primary" onClick={onStart} style={{ width: '100%', justifyContent: 'center' }}>
                   피부 분석 시작하기
