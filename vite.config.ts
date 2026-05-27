@@ -64,4 +64,20 @@ export default defineConfig({
       plugins: [],
     },
   },
+  build: {
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // React · Supabase를 별도 청크로 분리 → 앱 코드 변경 시 캐시 재사용
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'vendor-react'
+          }
+          if (id.includes('node_modules/@supabase')) {
+            return 'vendor-supabase'
+          }
+        },
+      },
+    },
+  },
 })
