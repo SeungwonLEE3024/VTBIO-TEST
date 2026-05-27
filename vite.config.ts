@@ -43,6 +43,12 @@ function localApiPlugin() {
           res.end(JSON.stringify({ success: true, mock: true }))
           return
         }
+        if (req.url === '/api/delete-account' && req.method === 'POST') {
+          res.setHeader('Content-Type', 'application/json;charset=UTF-8')
+          res.statusCode = 200
+          res.end(JSON.stringify({ success: true, mock: true }))
+          return
+        }
         next()
       })
     },

@@ -63,8 +63,12 @@ export default function MyPage({ session, onBack, onSignOut }: {
         },
       })
       if (!res.ok) {
-        const err = await res.json() as { error?: string }
-        throw new Error(err.error ?? '탈퇴 처리 중 오류가 발생했습니다.')
+        let errorMsg = '탈퇴 처리 중 오류가 발생했습니다.'
+        try {
+          const err = await res.json() as { error?: string }
+          errorMsg = err.error ?? errorMsg
+        } catch { /* 빈 응답 무시 */ }
+        throw new Error(errorMsg)
       }
       await supabase.auth.signOut()
       onSignOut()

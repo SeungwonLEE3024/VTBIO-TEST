@@ -25,6 +25,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const userId = user?.id
   if (!userId) return json({ error: '사용자를 찾을 수 없습니다.' }, 404)
 
+  // 프로필 스토리지 파일 삭제 (webp, jpg 모두 시도)
+  const extensions = ['webp', 'jpg']
+  await Promise.all(extensions.map(ext =>
+    fetch(`${env.SUPABASE_URL}/storage/v1/object/profile-photos/${userId}/avatar.${ext}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    })
+  ))
+
   // 프로필 데이터 삭제
   await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
     method: 'DELETE',
